@@ -193,19 +193,30 @@ def ndmd_training(
     batch_size = 128,
     learning_rate = 1e-3,
     epochs = 1000,
-    prediction_steps = 5
+    prediction_steps = 5,
+    scheduler_patience = 100,
+    early_stopping_patience = None,
+    min_delta = 1e-4,
+    min_lr = 1e-6,
+    verbose = True,
+    return_metrics = False
     ):
 
     best_loss = float("inf")
+    best_epoch = 0
+    best_state = None
+    best_dmd_state = None
+    stopped_epoch = epochs
+    epochs_without_improvement = 0
 
     optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 
         mode = "min",
         factor = 0.1,
-        patience = 100,
-        threshold = 1e-4,
-        min_lr = 1e-6
+        patience = scheduler_patience,
+        threshold = min_delta,
+        min_lr = min_lr
         )
 
     for epoch in range(epochs):
@@ -232,17 +243,54 @@ def ndmd_training(
         with torch.no_grad():
             y_prediction = model(x)
             valid_loss = mse(y_prediction, y)
-        scheduler.step(valid_loss)
-        if valid_loss < best_loss:
-            best_loss = valid_loss
-            best_state = model.state_dict()
+        valid_loss_value = float(valid_loss.item())
+        scheduler.step(valid_loss_value)
+        if valid_loss_value < best_loss - min_delta:
+            best_loss = valid_loss_value
+            best_epoch = epoch + 1
+            best_state = {
+                key: value.detach().clone()
+                for key, value in model.state_dict().items()
+                }
+            best_dmd_state = {
+                "U": model.U.detach().clone(),
+                "Atilde": model.Atilde.detach().clone()
+                }
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
 
         current_lr = optimizer.param_groups[0]["lr"]
 
-        if epoch == 0 or (epoch + 1)%100 == 0:
+        if verbose and (epoch == 0 or (epoch + 1)%100 == 0):
             print(f"epoch {epoch + 1: 4} / train loss: {train_loss:.6f} / valid loss: {valid_loss:.6f} / lr: {current_lr:.2e}")
 
-    print(f"best loss: {best_loss}")
+        if (
+            early_stopping_patience is not None
+            and epochs_without_improvement >= early_stopping_patience
+            ):
+            stopped_epoch = epoch + 1
+            if verbose:
+                print(f"early stopping at epoch {stopped_epoch} / best epoch: {best_epoch}")
+            break
+
+    if best_state is None:
+        raise RuntimeError("training did not produce a finite validation loss")
+
+    if verbose:
+        print(f"best loss: {best_loss}")
     model.load_state_dict(best_state)
+    model.U = best_dmd_state["U"]
+    model.Atilde = best_dmd_state["Atilde"]
+
+    metrics = {
+        "best_loss": best_loss,
+        "best_epoch": best_epoch,
+        "stopped_epoch": stopped_epoch,
+        "final_lr": current_lr
+        }
+
+    if return_metrics:
+        return model, metrics
 
     return model
