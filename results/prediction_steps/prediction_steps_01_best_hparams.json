@@ -1,0 +1,24 @@
+{
+  "prediction_steps": 1,
+  "best_trial": 84,
+  "best_valid_loss": 0.06857365369796753,
+  "best_epoch": 630,
+  "stopped_epoch": 930,
+  "hyperparameters": {
+    "latent_dim": 512,
+    "koopman_dim": 16,
+    "lrelu_alpha": 0.0006613182610284662,
+    "dropout_rate": 0.057452190090968136,
+    "regularize_coef": 0.3445786163985794,
+    "low_rank": 0.922554532411434,
+    "learning_rate": 0.0016886501479991154
+  },
+  "search": {
+    "trials": 100,
+    "max_epochs_per_trial": 1000,
+    "early_stopping_patience": 300,
+    "scheduler_patience": 100,
+    "min_delta": 0.0001,
+    "seed": 1000
+  }
+}
